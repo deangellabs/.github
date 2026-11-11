@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Repo sin build ni tests: solo el escaneo de secretos. Mismo nombre de job
+# que en ci-templates (Atlas mide la cobertura por ese check en main).
+# gitleaks sustituye a GitHub Secret Protection, dado de baja el 11/11/2026.
+jobs:
+  gitleaks:
+    runs-on: [self-hosted, linux, ci, no-secrets]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # El binario viene en la imagen del runner (deangellabs/cicd).
+      - name: gitleaks
+        run: gitleaks dir --redact --no-banner --exit-code 1 .
