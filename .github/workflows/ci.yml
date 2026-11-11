@@ -7,6 +7,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Un push nuevo a la misma rama cancela el run anterior. Sin esto, cada rebase
+# de un PR (Dependabot los rebasea a menudo) deja el run viejo ocupando el
+# unico runner cuando ya no le importa a nadie.
+# Solo se cancela en PRs: en main un run puede estar publicando algo.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
