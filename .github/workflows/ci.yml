@@ -13,14 +13,26 @@ permissions:
 # Repo sin build ni tests: solo el escaneo de secretos. Mismo nombre de job
 # que en ci-templates (Atlas mide la cobertura por ese check en main).
 # gitleaks sustituye a GitHub Secret Protection, dado de baja el 11/11/2026.
+# Este repo es PUBLICO: el grupo de runners self-hosted no admite repos
+# publicos (y no deben usarse en ellos), asi que corre en hosted, que es
+# gratis para repos publicos.
 jobs:
   gitleaks:
-    runs-on: [self-hosted, linux, ci, no-secrets]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # El binario viene en la imagen del runner (deangellabs/cicd).
+      - name: Asegurar gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  /tmp/gitleaks.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+          gitleaks version
       - name: gitleaks
         run: gitleaks dir --redact --no-banner --exit-code 1 .
