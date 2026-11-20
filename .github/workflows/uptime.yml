@@ -1,0 +1,61 @@
+name: Uptime externo
+
+# Uptime de PROD visto desde FUERA del Mac (ADR 0006 de deangellabs/_infra,
+# _infra#59). El Mac comprueba sus URLs cada 60 s, pero si el Mac se apaga o
+# pierde la red nadie mira: esto corre en runners de GitHub, gratis en un repo
+# publico, sin secretos ni permisos. Si una URL falla tres veces seguidas, el
+# run falla con una anotacion `<id>: ...` por URL; GitHub avisa por correo a
+# quien edito el cron por ultima vez, y el colector de Atlas
+# (collect/entornos_snapshot.py) lee el ultimo run y lo muestra en «Entornos».
+#
+# Solo URLs publicas (las mismas de atlas/entornos.json con externo: true).
+# Ojo: GitHub apaga los cron de repos publicos tras 60 dias sin actividad;
+# Atlas avisa si el workflow deja de estar `active` (gh workflow enable).
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comprobar PROD
+        shell: bash
+        run: |
+          set -uo pipefail
+          # id|url|texto esperado en el cuerpo
+          targets='portfolio|https://www.deangelg.net|<div id="root"
+          saffron-landing|https://saffron-landing-alpha.vercel.app|<div id="root"
+          signaltv|https://signaltv.app|<div id="root"
+          signaltv-api|https://api.signaltv.app/api/v1/health|"status":"ok"
+          quakeatlas|https://quakeatlas.com|Quake Atlas
+          quakeatlas-datos|https://data.quakeatlas.com/data/catalog-stats.json|"generatedAt"'
+          failed=0
+          while IFS='|' read -r id url expect; do
+            id="${id// /}"
+            ok=false
+            for attempt in 1 2 3; do
+              rm -f body   # sin esto, un fallo leeria el cuerpo de la URL anterior
+              code=$(curl -sSL -o body -w '%{http_code}' -m 20 -A "atlas-uptime-externo/1" "$url" 2>/dev/null) || true
+              code="${code:-000}"; touch body
+              if [[ "$code" == 2* ]] && grep -qF -- "$expect" body; then ok=true; break; fi
+              [ "$attempt" -lt 3 ] && sleep 20
+            done
+            if $ok; then
+              echo "OK   $id ($url)"
+            else
+              reason="HTTP $code"; [[ "$code" == 2* ]] && reason="HTTP $code sin el texto esperado"
+              echo "::error::$id: $url no responde bien ($reason, 3 intentos)"
+              failed=1
+            fi
+          done <<< "$targets"
+          exit "$failed"
